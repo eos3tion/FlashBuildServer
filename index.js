@@ -83,8 +83,7 @@ function resolveLanRes(svnSourceDir, svnLanDir, resTarget) {
             let data = fs.readFileSync(file);
             let hash = md5(data);
             let res = dict[uri];
-            if (res.hash == hash) //文件相同，干掉路径
-            {
+            if (res.hash == hash) {//文件相同，干掉路径
                 delete dict[uri];
             }
         } else { //删除

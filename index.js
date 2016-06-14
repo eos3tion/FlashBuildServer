@@ -1,6 +1,8 @@
 'use strict'
 require('./buildLib');
 const fs = require("fs-extra");
+const cp = require('child_process');
+const os = require("os");
 
 /**
  * 用于存放资源的uri，原始路径，以及hash值
@@ -57,17 +59,44 @@ function resolveLanRes(svnSourceDir, svnLanDir, resTarget) {
         //获取不在指定语言的目录中原始路径的文件
         fileList.length = 0;
         walkDirSync(svnSourceDir, fileList);
-        console.log(Date.now(), "遍历原始语言的目录完成", fileList.length);
-        for (let file of fileList) {
-            let uri = file.replace(svnSourceDir, "");
-            if (!(uri in dict)) {
-                let data = fs.readFileSync(file);
-                let hash = md5(data);
-                dict[uri] = new ResInfo(file, uri, hash);
-            }
+        let len = fileList.length;
+        console.log(Date.now(), "遍历原始语言的目录完成", len);
+        let cpulen = os.cpus().length;
+        let step = len / cpulen;
+        let start = 0;
+        let children = [];
+        let count = cpulen;
+        let dport = 2244;
+        for (var i = 0; i < cpulen; i++) {
+            let subList = i == cpulen - 1 ? fileList.slice(start) : fileList.slice(start, start += step);
+            let child = cp.fork(__dirname + "/worker.js", {
+                execArgv: [`--debug=${++dport}`]
+            });
+            child.on("message", list => {
+                list.forEach(item => {
+                    let uri = item[0];
+                    dict[uri] = new ResInfo(item[1], uri, item[2]);
+                });
+                child.kill();
+                count--;
+                console.log("left count", count);
+                if (!count) {
+                    cb(resTarget, fileList, dict, starttime);
+                    console.log(Date.now(), "获取不在指定语言的目录中原始路径的文件完成", len);
+                }
+            });
+            child.send({
+                fileList: subList,
+                svnSourceDir: svnSourceDir,
+                dict: dict
+            });
         }
-        console.log(Date.now(), "获取不在指定语言的目录中原始路径的文件完成", fileList.length);
+    } else {
+        cb(resTarget, fileList, dict, starttime);
     }
+}
+
+function cb(resTarget, fileList, dict, starttime) {
     //找到目标目录
     //检查是否已经有目标目录
     if (!fs.existsSync(resTarget)) {
@@ -76,6 +105,7 @@ function resolveLanRes(svnSourceDir, svnLanDir, resTarget) {
     //检查目标目录的hash
     fileList.length = 0;
     walkDirSync(resTarget, fileList);
+    console.log("目标文件路径", fileList.length);
     for (let file of fileList) {
         let uri = file.replace(resTarget, "");
         if (uri in dict) {
@@ -83,7 +113,7 @@ function resolveLanRes(svnSourceDir, svnLanDir, resTarget) {
             let data = fs.readFileSync(file);
             let hash = md5(data);
             let res = dict[uri];
-            if (res.hash == hash) {//文件相同，干掉路径
+            if (res.hash == hash) { //文件相同，干掉路径
                 delete dict[uri];
             }
         } else { //删除
@@ -91,10 +121,7 @@ function resolveLanRes(svnSourceDir, svnLanDir, resTarget) {
         }
     }
     console.log(Date.now(), "检查目标目录的hash完成");
-
-
     var hashDat = {};
-
     //遍历变化列表
     for (let uri in dict) {
         let res = dict[uri];
@@ -105,7 +132,6 @@ function resolveLanRes(svnSourceDir, svnLanDir, resTarget) {
     console.log(Date.now(), "拷贝有变化的文件完成");
     console.log("处理总时间：", Date.now() - starttime);
     return hashDat;
-
 }
 
 resolveLanRes("D:/junyou2015/huaqiangu/res", "D:/junyou2015/huaqiangu/res-vn", "D:/junyou2015/huaqiangu/temp");

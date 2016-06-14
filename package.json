@@ -1,0 +1,11 @@
+{
+  "name": "appbuilder",
+  "version": "1.0.0",
+  "description": "junyou As3 project builder ",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}
